@@ -8,10 +8,11 @@ import android.location.LocationManager;
 import android.os.StrictMode;
 import android.preference.PreferenceManager;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.widget.Toast;
 
-import org.osmdroid.api.IMapController;
 import org.osmdroid.bonuspack.routing.OSRMRoadManager;
 import org.osmdroid.bonuspack.routing.Road;
 import org.osmdroid.bonuspack.routing.RoadManager;
@@ -25,7 +26,8 @@ import org.osmdroid.views.overlay.Polyline;
 import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
-    MapView map = null;
+    private static final int MULTIPLE_PERMISSION_REQUEST_CODE = 4;
+    private MapView mapView;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -48,8 +50,79 @@ public class MainActivity extends AppCompatActivity {
         //inflate and create the map
         setContentView(R.layout.activity_main);
 
-        map = (MapView) findViewById(R.id.map);
-        map.setTileSource(TileSourceFactory.MAPNIK);
+        checkPermissionsState();
+    }
+
+    private void checkPermissionsState() {
+        int internetPermissionCheck = ContextCompat.checkSelfPermission(this,
+                Manifest.permission.INTERNET);
+
+        int networkStatePermissionCheck = ContextCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_NETWORK_STATE);
+
+        int writeExternalStoragePermissionCheck = ContextCompat.checkSelfPermission(this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE);
+
+        int coarseLocationPermissionCheck = ContextCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_COARSE_LOCATION);
+
+        int fineLocationPermissionCheck = ContextCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_FINE_LOCATION);
+
+        int wifiStatePermissionCheck = ContextCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_WIFI_STATE);
+
+        if (internetPermissionCheck == PackageManager.PERMISSION_GRANTED &&
+                networkStatePermissionCheck == PackageManager.PERMISSION_GRANTED &&
+                writeExternalStoragePermissionCheck == PackageManager.PERMISSION_GRANTED &&
+                coarseLocationPermissionCheck == PackageManager.PERMISSION_GRANTED &&
+                fineLocationPermissionCheck == PackageManager.PERMISSION_GRANTED &&
+                wifiStatePermissionCheck == PackageManager.PERMISSION_GRANTED) {
+
+            setupMap();
+
+        } else {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{
+                            Manifest.permission.INTERNET,
+                            Manifest.permission.ACCESS_NETWORK_STATE,
+                            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_WIFI_STATE},
+                    MULTIPLE_PERMISSION_REQUEST_CODE);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == MULTIPLE_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0) {
+                boolean somePermissionWasDenied = false;
+                for (int result : grantResults) {
+                    if (result == PackageManager.PERMISSION_DENIED) {
+                        somePermissionWasDenied = true;
+                    }
+                }
+                if (somePermissionWasDenied) {
+                    Toast.makeText(this, "Cant load maps without all the permissions granted", Toast.LENGTH_SHORT).show();
+                } else {
+                    setupMap();
+                }
+            } else {
+                Toast.makeText(this, "Cant load maps without all the permissions granted", Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
+    }
+
+    private void setupMap() {
+
+        mapView = findViewById(R.id.map);
+        mapView.setClickable(true);
+        mapView.setMultiTouchControls(true);
+        mapView.getController().setZoom(9.5);
+        mapView.setTileSource(TileSourceFactory.MAPNIK);
 
         LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
@@ -63,36 +136,33 @@ public class MainActivity extends AppCompatActivity {
             // for ActivityCompat#requestPermissions for more details.
             return;
         }
-        Location location = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-        double longitude = location.getLongitude();
-        double latitude = location.getLatitude();
+        Location mLastLocation = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+        double longitude = mLastLocation.getLongitude();
+        double latitude = mLastLocation.getLatitude();
 
-        map.setMultiTouchControls(true);
-        IMapController mapController = map.getController();
-        mapController.setZoom(9.5);
         GeoPoint startPoint = new GeoPoint(latitude, longitude);
-        mapController.setCenter(startPoint);
+        mapView.getController().setCenter(startPoint);
 
-        Marker startMarker = new Marker(map);
+        Marker startMarker = new Marker(mapView);
         startMarker.setPosition(startPoint);
         startMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
-        map.getOverlays().add(startMarker);
+        mapView.getOverlays().add(startMarker);
 
         ArrayList<GeoPoint> waypoints = new ArrayList<>();
         waypoints.add(startPoint);
         GeoPoint endPoint = new GeoPoint(10.030325, 105.770221);
         waypoints.add(endPoint);
 
-        Marker endMarker = new Marker(map);
+        Marker endMarker = new Marker(mapView);
         endMarker.setPosition(endPoint);
         endMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM);
-        map.getOverlays().add(endMarker);
+        mapView.getOverlays().add(endMarker);
 
         RoadManager roadManager = new OSRMRoadManager(this);
         Road road = roadManager.getRoad(waypoints);
         Polyline roadOverlay = RoadManager.buildRoadOverlay(road);
-        map.getOverlays().add(roadOverlay);
-        map.invalidate();
+        mapView.getOverlays().add(roadOverlay);
+        mapView.invalidate();
     }
 
     public void onResume(){
@@ -101,7 +171,7 @@ public class MainActivity extends AppCompatActivity {
         //if you make changes to the configuration, use
         //SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         //Configuration.getInstance().load(this, PreferenceManager.getDefaultSharedPreferences(this));
-        map.onResume(); //needed for compass, my location overlays, v6.0.0 and up
+        mapView.onResume(); //needed for compass, my location overlays, v6.0.0 and up
     }
 
     public void onPause(){
@@ -110,6 +180,6 @@ public class MainActivity extends AppCompatActivity {
         //if you make changes to the configuration, use
         //SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         //Configuration.getInstance().save(this, prefs);
-        map.onPause();  //needed for compass, my location overlays, v6.0.0 and up
+        mapView.onPause();  //needed for compass, my location overlays, v6.0.0 and up
     }
 }
